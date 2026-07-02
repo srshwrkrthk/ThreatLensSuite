@@ -7,6 +7,9 @@ from analyzers.phishing_analyzer import analyze_url
 from models.phishing_models import URLRequest, URLResponse
 from analyzers.risk_engine import calculate_overall_risk
 from models.risk_models import RiskRequest, RiskResponse
+from analyzers.website_analyzer import analyze_website
+from models.website_models import WebsiteRequest, WebsiteResponse
+
 
 app = FastAPI(
     title="ThreatLens API",
@@ -51,3 +54,7 @@ def calculate_risk(data: RiskRequest):
         data.url_score,
         data.website_score
     )
+
+@app.post("/scan-website", response_model=WebsiteResponse)
+def scan_website(data: WebsiteRequest):
+    return analyze_website(data.url)
