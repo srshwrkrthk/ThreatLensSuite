@@ -1,10 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-#Instead of direct import, i am importing the PassWordreq from models here, this allows me to make multiple requests instead of fixed one
+# Importing request and response models from models folder to keep API schemas separate from route logic
 from models.password_models import PasswordRequest, PasswordResponse
 from analyzers.password_analyzer import analyze_password
 from analyzers.phishing_analyzer import analyze_url
 from models.phishing_models import URLRequest, URLResponse
+from analyzers.risk_engine import calculate_overall_risk
+from models.risk_models import RiskRequest, RiskResponse
 
 app = FastAPI(
     title="ThreatLens API",
@@ -41,3 +43,11 @@ def check_password(data: PasswordRequest):
 @app.post("/analyze-url", response_model=URLResponse)
 def check_url(data: URLRequest):
     return analyze_url(data.url)
+
+@app.post("/calculate-risk", response_model=RiskResponse)
+def calculate_risk(data: RiskRequest):
+    return calculate_overall_risk(
+        data.password_score,
+        data.url_score,
+        data.website_score
+    )

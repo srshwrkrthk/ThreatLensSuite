@@ -1,21 +1,32 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 
 class WebsiteRequest(BaseModel):
     url: str
 
 
-class WebsiteResponse(BaseModel):
-    url: str
+class WebsiteInfo(BaseModel):
+    input_url: str
     final_url: Optional[str]
     status_code: Optional[int]
     https_enabled: bool
-    present_headers: List[str]
-    missing_headers: List[str]
-    robots_txt_found: bool
-    security_txt_found: bool
-    allowed_methods: str
+
+
+class HeaderInfo(BaseModel):
+    present: bool
+    value: Optional[str]
+    description: str
+    recommendation: str
+
+
+class WebsiteSummary(BaseModel):
     score: int
     risk_level: str
     findings: List[str]
+
+
+class WebsiteResponse(BaseModel):
+    website: WebsiteInfo
+    security_headers: Dict[str, HeaderInfo]
+    summary: WebsiteSummary
