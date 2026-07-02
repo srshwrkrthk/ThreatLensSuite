@@ -4,6 +4,7 @@ import requests
 from utils.network_utils import get_domain, get_ip_address, get_ssl_info
 from utils.dns_utils import get_dns_records, get_dmarc_record
 
+
 SECURITY_HEADERS = {
     "Strict-Transport-Security": {
         "description": "Forces browsers to use HTTPS instead of HTTP.",
@@ -28,103 +29,234 @@ SECURITY_HEADERS = {
 }
 
 
-def analyze_website(url: str):
+def normalize_url(url: str):
     if not url.startswith("http://") and not url.startswith("https://"):
-        url = "https://" + url
+        return "https://" + url
+    return url
+
+
+def fetch_website(url: str):
+    start_time = time.time()
+    response = requests.get(url, timeout=5)
+    end_time = time.time()
+
+    response_time_ms = round((end_time - start_time) * 1000)
+
+    return response, response_time_ms
+
+
+def analyze_security_headers(headers):
+    score = 0
+    findings = []
+    header_report = {}
+
+    for header, info in SECURITY_HEADERS.items():
+        if header in headers:
+            header_report[header] = {
+                "present": True,
+                "value": headers[header],
+                "security_rating": "Good",
+                "description": info["description"],
+                "risk_impact": info["risk_impact"],
+                "recommendation": "No action needed."
+            }
+        else:
+            score += 15
+            findings.append(f"Missing {header} header.")
+            header_report[header] = {
+                "present": False,
+                "value": None,
+                "security_rating": "Critical",
+                "description": info["description"],
+                "risk_impact": info["risk_impact"],
+                "recommendation": info["recommendation"]
+            }
+
+    return header_report, score, findings
+
+
+def analyze_cookies(cookies):
+    score = 0
+    findings = []
+    cookie_report = []
+
+    for cookie in cookies:
+        secure = cookie.secure
+        httponly = "HttpOnly" in str(cookie._rest)
+        samesite = cookie._rest.get("SameSite")
+
+        missing_flags = []
+
+        if not secure:
+            missing_flags.append("Secure")
+
+        if not httponly:
+            missing_flags.append("HttpOnly")
+
+        if not samesite:
+            missing_flags.append("SameSite")
+
+        if len(missing_flags) == 0:
+            security_rating = "Good"
+            recommendation = "Cookie security flags are properly configured."
+        else:
+            security_rating = "Weak"
+            recommendation = "Add missing cookie flags: " + ", ".join(missing_flags)
+
+            if "HttpOnly" in missing_flags:
+                score += 5
+                findings.append(f"Cookie '{cookie.name}' is missing HttpOnly flag.")
+
+            if "Secure" in missing_flags:
+                score += 10
+                findings.append(f"Cookie '{cookie.name}' is missing Secure flag.")
+
+            if "SameSite" in missing_flags:
+                score += 5
+                findings.append(f"Cookie '{cookie.name}' is missing SameSite flag.")
+
+        cookie_report.append({
+            "name": cookie.name,
+            "secure": secure,
+            "httponly": httponly,
+            "samesite": samesite,
+            "security_rating": security_rating,
+            "recommendation": recommendation
+        })
+
+    return cookie_report, score, findings
+
+
+def analyze_http_methods(final_url: str):
+    risky_methods = ["PUT", "DELETE", "TRACE"]
+    allowed_methods = []
 
     try:
-        start_time = time.time()
-        response = requests.get(url, timeout=5)
-        end_time = time.time()
+        options_response = requests.options(final_url, timeout=5)
+        allow_header = options_response.headers.get("Allow", "")
 
-        response_time_ms = round((end_time - start_time) * 1000)
+        if allow_header:
+            allowed_methods = [
+                method.strip().upper()
+                for method in allow_header.split(",")
+            ]
+
+    except requests.exceptions.RequestException:
+        allowed_methods = []
+
+    detected_risky_methods = [
+        method for method in allowed_methods
+        if method in risky_methods
+    ]
+
+    if detected_risky_methods:
+        return {
+            "allowed_methods": allowed_methods,
+            "risky_methods": detected_risky_methods,
+            "security_rating": "Weak",
+            "recommendation": "Disable risky HTTP methods such as PUT, DELETE, or TRACE unless strictly required."
+        }, 20, [
+            "Risky HTTP methods exposed: " + ", ".join(detected_risky_methods)
+        ]
+
+    return {
+        "allowed_methods": allowed_methods,
+        "risky_methods": [],
+        "security_rating": "Good",
+        "recommendation": "No risky HTTP methods were detected."
+    }, 0, []
+
+
+def analyze_robots_txt(final_url: str):
+    robots_url = final_url.rstrip("/") + "/robots.txt"
+    robots_found = False
+    disallowed_paths = []
+
+    try:
+        robots_response = requests.get(robots_url, timeout=5)
+
+        if robots_response.status_code == 200:
+            robots_found = True
+
+            for line in robots_response.text.splitlines():
+                line = line.strip()
+
+                if line.lower().startswith("disallow:"):
+                    path = line.split(":", 1)[1].strip()
+
+                    if path:
+                        disallowed_paths.append(path)
+
+    except requests.exceptions.RequestException:
+        robots_found = False
+
+    return {
+        "found": robots_found,
+        "disallowed_paths": disallowed_paths,
+        "security_rating": "Informational",
+        "description": "robots.txt tells search engine crawlers which paths they should avoid crawling.",
+        "recommendation": (
+            "Review exposed disallowed paths and avoid listing sensitive admin or private routes."
+            if robots_found
+            else "robots.txt was not found. This is not necessarily a security issue."
+        )
+    }
+
+
+def analyze_security_txt(final_url: str):
+    security_txt_url = final_url.rstrip("/") + "/.well-known/security.txt"
+    security_txt_found = False
+
+    try:
+        security_txt_response = requests.get(security_txt_url, timeout=5)
+
+        if security_txt_response.status_code == 200:
+            security_txt_found = True
+
+    except requests.exceptions.RequestException:
+        security_txt_found = False
+
+    return {
+        "found": security_txt_found,
+        "url": security_txt_url,
+        "security_rating": "Good" if security_txt_found else "Informational",
+        "description": "security.txt helps security researchers report vulnerabilities responsibly.",
+        "recommendation": (
+            "security.txt was found. The site provides a vulnerability disclosure contact path."
+            if security_txt_found
+            else "Consider adding security.txt to provide vulnerability reporting information."
+        )
+    }
+
+
+def calculate_risk_level(score: int):
+    if score >= 60:
+        return "High Risk"
+    elif score >= 30:
+        return "Moderate Risk"
+    else:
+        return "Low Risk"
+
+
+def analyze_website(url: str):
+    url = normalize_url(url)
+
+    try:
+        response, response_time_ms = fetch_website(url)
 
         final_url = response.url
         headers = response.headers
-        cookie_report = []
-        score = 0
-        findings = []
-        header_report = {}
-        for cookie in response.cookies:
-            secure = cookie.secure
-            httponly = "HttpOnly" in str(cookie._rest)
-            samesite = cookie._rest.get("SameSite")
 
-            missing_flags = []
-
-            if not secure:
-                missing_flags.append("Secure")
-
-            if not httponly:
-                missing_flags.append("HttpOnly")
-
-            if not samesite:
-                missing_flags.append("SameSite")
-
-            if len(missing_flags) == 0:
-                security_rating = "Good"
-                recommendation = "Cookie security flags are properly configured."
-            else:
-                security_rating = "Weak"
-                recommendation = "Add missing cookie flags: " + ", ".join(missing_flags)
-
-                if "HttpOnly" in missing_flags:
-                    score += 5
-                    findings.append(f"Cookie '{cookie.name}' is missing HttpOnly flag.")
-
-                if "Secure" in missing_flags:
-                    score += 10
-                    findings.append(f"Cookie '{cookie.name}' is missing Secure flag.")
-
-                if "SameSite" in missing_flags:
-                    score += 5
-                    findings.append(f"Cookie '{cookie.name}' is missing SameSite flag.")
-
-            cookie_report.append({
-                "name": cookie.name,
-                "secure": secure,
-                "httponly": httponly,
-                "samesite": samesite,
-                "security_rating": security_rating,
-                "recommendation": recommendation
-    })
-        risky_methods = ["PUT", "DELETE", "TRACE"]
-        allowed_methods = []
-
-        try:
-            options_response = requests.options(final_url, timeout=5)
-            allow_header = options_response.headers.get("Allow", "")
-
-            if allow_header:
-                allowed_methods = [
-                    method.strip().upper()
-                    for method in allow_header.split(",")
-                ]
-        except requests.exceptions.RequestException:
-            allowed_methods = []
-        detected_risky_methods = [
-            method for method in allowed_methods
-            if method in risky_methods
-        ]
-
-        if detected_risky_methods:
-            score += 20
-            findings.append(
-                "Risky HTTP methods exposed: " + ", ".join(detected_risky_methods)
-            )
-
-            methods_rating = "Weak"
-            methods_recommendation = "Disable risky HTTP methods such as PUT, DELETE, or TRACE unless strictly required."
-        else:
-            methods_rating = "Good"
-            methods_recommendation = "No risky HTTP methods were detected."
         domain = get_domain(final_url)
         ip_address = get_ip_address(domain)
+
         dns_records = get_dns_records(domain)
         dmarc_record = get_dmarc_record(domain)
+
         txt_records = dns_records.get("TXT", [])
         spf_found = any("v=spf1" in record.lower() for record in txt_records)
         dmarc_found = len(dmarc_record) > 0
+
         https_enabled = final_url.startswith("https://")
         redirected = url != final_url
         server = headers.get("Server", "Not disclosed")
@@ -136,62 +268,9 @@ def analyze_website(url: str):
             "days_remaining": None,
             "certificate_valid": False
         }
-        if not spf_found:
-            score += 8
-            findings.append("SPF record was not found. Email spoofing protection may be weak.")
 
-        if not dmarc_found:
-            score += 10
-            findings.append("DMARC record was not found. Domain may be more vulnerable to email spoofing.")
-        robots_url = final_url.rstrip("/") + "/robots.txt"
-        robots_found = False
-        disallowed_paths = []
-
-        try:
-            robots_response = requests.get(robots_url, timeout=5)
-
-            if robots_response.status_code == 200:
-                robots_found = True
-
-                for line in robots_response.text.splitlines():
-                    line = line.strip()
-
-                    if line.lower().startswith("disallow:"):
-                        path = line.split(":", 1)[1].strip()
-
-                        if path:
-                            disallowed_paths.append(path)
-
-        except requests.exceptions.RequestException:
-            robots_found = False
-        if robots_found:
-            robots_rating = "Informational"
-            robots_recommendation = "Review exposed disallowed paths and avoid listing sensitive admin or private routes."
-        else:
-            robots_rating = "Informational"
-            robots_recommendation = "robots.txt was not found. This is not necessarily a security issue."
-
-        robots_description = "robots.txt tells search engine crawlers which paths they should avoid crawling."
-
-        security_txt_url = final_url.rstrip("/") + "/.well-known/security.txt"
-        security_txt_found = False
-
-        try:
-            security_txt_response = requests.get(security_txt_url, timeout=5)
-
-            if security_txt_response.status_code == 200:
-                security_txt_found = True
-
-        except requests.exceptions.RequestException:
-            security_txt_found = False
-        if security_txt_found:
-            security_txt_rating = "Good"
-            security_txt_recommendation = "security.txt was found. The site provides a vulnerability disclosure contact path."
-        else:
-            security_txt_rating = "Informational"
-            security_txt_recommendation = "Consider adding security.txt to provide vulnerability reporting information."
-
-        security_txt_description = "security.txt helps security researchers report vulnerabilities responsibly."
+        score = 0
+        findings = []
 
         if not https_enabled:
             score += 25
@@ -200,6 +279,7 @@ def analyze_website(url: str):
         if not ssl_info["certificate_valid"]:
             score += 25
             findings.append("SSL certificate is invalid or unavailable.")
+
         days_remaining = ssl_info.get("days_remaining")
 
         if days_remaining is not None:
@@ -212,35 +292,31 @@ def analyze_website(url: str):
             elif days_remaining <= 30:
                 score += 8
                 findings.append("SSL certificate expires within 30 days.")
-        
-        for header, info in SECURITY_HEADERS.items():
-            if header in headers:
-                header_report[header] = {
-                    "present": True,
-                    "value": headers[header],
-                    "security_rating": "Good",
-                    "description": info["description"],
-                    "risk_impact": info["risk_impact"],
-                    "recommendation": "No action needed."
-                }
-            else:
-                score += 15
-                findings.append(f"Missing {header} header.")
-                header_report[header] = {
-                "present": False,
-                "value": None,
-                "security_rating": "Critical",
-                "description": info["description"],
-                "risk_impact": info["risk_impact"],
-                "recommendation": info["recommendation"]
-                }
 
-        if score >= 60:
-            risk_level = "High Risk"
-        elif score >= 30:
-            risk_level = "Moderate Risk"
-        else:
-            risk_level = "Low Risk"
+        if not spf_found:
+            score += 8
+            findings.append("SPF record was not found. Email spoofing protection may be weak.")
+
+        if not dmarc_found:
+            score += 10
+            findings.append("DMARC record was not found. Domain may be more vulnerable to email spoofing.")
+
+        header_report, header_score, header_findings = analyze_security_headers(headers)
+        score += header_score
+        findings.extend(header_findings)
+
+        cookie_report, cookie_score, cookie_findings = analyze_cookies(response.cookies)
+        score += cookie_score
+        findings.extend(cookie_findings)
+
+        http_methods, methods_score, methods_findings = analyze_http_methods(final_url)
+        score += methods_score
+        findings.extend(methods_findings)
+
+        robots_txt = analyze_robots_txt(final_url)
+        security_txt = analyze_security_txt(final_url)
+
+        risk_level = calculate_risk_level(score)
 
         return {
             "website": {
@@ -255,34 +331,17 @@ def analyze_website(url: str):
                 "response_time_ms": response_time_ms
             },
             "ssl": ssl_info,
-            "security_headers": header_report,
-            "cookies": cookie_report,
             "dns": {
                 "records": dns_records,
                 "dmarc": dmarc_record,
                 "spf_found": spf_found,
                 "dmarc_found": dmarc_found
             },
-            "http_methods": {
-                "allowed_methods": allowed_methods,
-                "risky_methods": detected_risky_methods,
-                "security_rating": methods_rating,
-                "recommendation": methods_recommendation
-            },
-            "robots_txt": {
-                "found": robots_found,
-                "disallowed_paths": disallowed_paths,
-                "security_rating": robots_rating,
-                "description": robots_description,
-                "recommendation": robots_recommendation
-            },
-            "security_txt": {
-                "found": security_txt_found,
-                "url": security_txt_url,
-                "security_rating": security_txt_rating,
-                "description": security_txt_description,
-                "recommendation": security_txt_recommendation
-            },
+            "security_headers": header_report,
+            "cookies": cookie_report,
+            "http_methods": http_methods,
+            "robots_txt": robots_txt,
+            "security_txt": security_txt,
             "summary": {
                 "score": score,
                 "risk_level": risk_level,
@@ -310,14 +369,14 @@ def analyze_website(url: str):
                 "days_remaining": None,
                 "certificate_valid": False
             },
-            "security_headers": {},
-            "cookies": [],
             "dns": {
                 "records": {},
                 "dmarc": [],
                 "spf_found": False,
                 "dmarc_found": False
             },
+            "security_headers": {},
+            "cookies": [],
             "http_methods": {
                 "allowed_methods": [],
                 "risky_methods": [],
