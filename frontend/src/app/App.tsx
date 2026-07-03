@@ -911,7 +911,7 @@ function OverviewSection({ score, cardCount, setSection }: { score: number; card
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))" }}>
           {D.modules.map((mod, i) => {
             const visible = i < cardCount;
-            const sc = { pass: "#10b981", warn: "#f59e0b", info: "#3b82f6" }[mod.status];
+            const sc = {pass: "#10b981", warn: "#f59e0b", info: "#3b82f6", fail: "#ef4444",}[mod.status];
             const Icon = mod.Icon;
             return (
               <div key={i} onClick={() => setSection(mod.id)}
@@ -2135,7 +2135,7 @@ function mapWebsite(api: any) {
     ],
 
     modules: [
-      { id: "ssl" as Section, label: "SSL Certificate", Icon: Lock, status: sslValid ? "pass" as CardStatus : "fail" as CardStatus, metric: sslValid ? `${D.ssl.daysLeft} days left` : "Invalid / unavailable", score: sslValid ? 95 : 20 },
+      {id: "ssl" as Section, label: "SSL Certificate", Icon: Lock, status: sslValid ? "pass" as CardStatus : "fail" as CardStatus, metric: sslValid ? `${Math.max(0, Number(api?.ssl?.days_remaining ?? 0))} days left` : "Invalid / unavailable", score: sslValid ? 95 : 20},
       { id: "dns" as Section, label: "DNS Security", Icon: Globe, status: api?.dns?.dmarc_found ? "pass" as CardStatus : "warn" as CardStatus, metric: `${dnsCount} records`, score: api?.dns?.dmarc_found ? 85 : 60 },
       { id: "headers" as Section, label: "Security Headers", Icon: Shield, status: headerPresentCount >= 3 ? "pass" as CardStatus : "warn" as CardStatus, metric: `${headerPresentCount} / ${Object.keys(headers).length} present`, score: Object.keys(headers).length ? Math.round((headerPresentCount / Object.keys(headers).length) * 100) : 0 },
       { id: "cookies" as Section, label: "Cookie Security", Icon: Database, status: weakCookies ? "warn" as CardStatus : "pass" as CardStatus, metric: `${cookieList.length} cookies · ${weakCookies} issue${weakCookies === 1 ? "" : "s"}`, score: weakCookies ? 65 : 95 },
