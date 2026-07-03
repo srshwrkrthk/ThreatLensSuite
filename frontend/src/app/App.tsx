@@ -1338,7 +1338,7 @@ function ResultsDashboard({ target, onReset }: { target: string; onReset: () => 
           {sidebarOpen && (
             <div className="flex-1 min-w-0">
               <div className="font-bold text-sm truncate" style={{ color: "#e2e8f0" }}>ThreatLens</div>
-              <div className="text-xs" style={{ color: "#1e3a5f", fontFamily: "'JetBrains Mono', monospace" }}>v2.1.0</div>
+              <div className="text-xs" style={{ color: "#1e3a5f", fontFamily: "'JetBrains Mono', monospace" }}>v1.1.0</div>
             </div>
           )}
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="flex-shrink-0 p-1 rounded-lg transition-colors hover:bg-white/5" style={{ color: "#475569" }}>
