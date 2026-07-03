@@ -10,3 +10,4 @@ class PasswordResponse(BaseModel):
     score: int
     risk_level: str
     findings: List[str]
+    crack_time: str
