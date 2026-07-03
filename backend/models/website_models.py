@@ -73,6 +73,15 @@ class TechnologyInfo(BaseModel):
     evidence: str
     confidence: str
 
+class WhoisInfo(BaseModel):
+    registrar: Optional[str]
+    creation_date: Optional[str]
+    expiration_date: Optional[str]
+    updated_date: Optional[str]
+    name_servers: List[str]
+    emails: List[str]
+    country: Optional[str]
+
 class WebsiteSummary(BaseModel):
     score: int
     risk_level: str
@@ -88,4 +97,5 @@ class WebsiteResponse(BaseModel):
     robots_txt: RobotsInfo
     security_txt: SecurityTxtInfo
     technologies: List[TechnologyInfo]
+    whois: WhoisInfo
     summary: WebsiteSummary

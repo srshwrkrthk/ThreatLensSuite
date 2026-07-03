@@ -1,15 +1,27 @@
+# Python
 __pycache__/
-*.py[cod]
-*.pyo
+*.pyc
 
+# Virtual Environments
 venv/
-.venv/
-env/
-
 .env
 
-.vscode/
-.idea/
+# Node
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
 
+# Build
+dist/
+build/
+
+# Logs
+*.log
+
+# VS Code
+.vscode/
+
+# OS
 .DS_Store
 Thumbs.db
