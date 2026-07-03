@@ -34,8 +34,21 @@ def analyze_password(password: str):
     else:
         risk_level = "High Risk"
 
+    if score >= 80:
+        crack_time = "Centuries"
+    elif score >= 60:
+        crack_time = "Several Years"
+    elif score >= 40:
+        crack_time = "Several Months"
+    elif score >= 20:
+        crack_time = "Several Days"
+    else:
+        crack_time = "Instantly"
+
     return {
         "score": score,
         "risk_level": risk_level,
-        "findings": findings
+        "findings": findings,
+        "crack_time": crack_time
     }
+

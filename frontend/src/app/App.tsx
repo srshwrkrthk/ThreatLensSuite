@@ -1813,11 +1813,24 @@ function URLOverviewSection({ score, cardCount, setSection }: { score: number; c
   return (
     <div className="space-y-5 tl-fade-enter">
       {/* Threat banner */}
-      <div className="tl-glass p-4 flex items-center gap-4" style={{ borderColor: "rgba(239,68,68,0.25)", background: "rgba(239,68,68,0.05)" }}>
-        <AlertTriangle size={20} style={{ color: "#ef4444", flexShrink: 0 }} />
+      <div className="tl-glass p-4 flex items-center gap-4" style={{
+        borderColor: score >= 70 ? "rgba(239,68,68,0.25)" : score >= 40 ? "rgba(245,158,11,0.25)" : "rgba(16,185,129,0.25)",
+        background: score >= 70 ? "rgba(239,68,68,0.05)" : score >= 40 ? "rgba(245,158,11,0.05)" : "rgba(16,185,129,0.05)"
+      }}>
+        {score >= 40
+          ? <AlertTriangle size={20} style={{ color: score >= 70 ? "#ef4444" : "#f59e0b", flexShrink: 0 }} />
+          : <CheckCircle size={20} style={{ color: "#10b981", flexShrink: 0 }} />}
         <div>
-          <div className="text-sm font-bold" style={{ color: "#ef4444" }}>⚠ High Phishing Risk Detected</div>
-          <div className="text-xs mt-0.5" style={{ color: "#64748b" }}>This URL shows {score}% threat indicators. Do not enter personal information or credentials.</div>
+          <div className="text-sm font-bold" style={{ color: score >= 70 ? "#ef4444" : score >= 40 ? "#f59e0b" : "#10b981" }}>
+            {score >= 70 ? "⚠ High Phishing Risk Detected" : score >= 40 ? "⚠ Moderate Phishing Risk" : "✅ Low Phishing Risk"}
+          </div>
+          <div className="text-xs mt-0.5" style={{ color: "#64748b" }}>
+            {score >= 70
+              ? `This URL shows ${score}% threat indicators. Do not enter personal information or credentials.`
+              : score >= 40
+              ? `This URL shows ${score}% threat indicators. Review carefully before visiting.`
+              : `ThreatLens detected only ${score}% threat indicators. No major phishing signals were found.`}
+          </div>
         </div>
       </div>
       <div className="grid gap-4" style={{ gridTemplateColumns: "auto 1fr" }}>
@@ -1834,11 +1847,11 @@ function URLOverviewSection({ score, cardCount, setSection }: { score: number; c
             <div className="text-xs font-bold mb-4" style={{ color: "#334155", letterSpacing: "1.5px", fontFamily: "'JetBrains Mono', monospace" }}>THREAT SUMMARY</div>
             <div className="space-y-3">
               {[
-                { label: "Threat Score",   value: `${score}%`,         color: threatColor },
-                { label: "Domain Age",     value: "2 days",            color: "#ef4444"   },
-                { label: "Redirects",      value: "4 chains",          color: "#f59e0b"   },
-                { label: "Keywords",       value: "6 suspicious",       color: "#f59e0b"   },
-                { label: "SSL",            value: "Valid (misleading)", color: "#10b981"   },
+                { label: "Threat Score",   value: `${score}%`, color: threatColor },
+                { label: "Domain Age",     value: UD.domain.age ?? "Unknown", color: UD.domain.age === "Unknown" ? "#f59e0b" : "#94a3b8" },
+                { label: "Redirects",      value: `${UD.redirects.length} chains`, color: UD.redirects.length ? "#f59e0b" : "#10b981" },
+                { label: "Keywords",       value: `${UD.keywords.length} suspicious`, color: UD.keywords.length ? "#f59e0b" : "#10b981" },
+                { label: "SSL",            value: score >= 40 ? "Needs Review" : "Secure", color: score >= 40 ? "#f59e0b" : "#10b981" },
               ].map(({ label, value, color }) => (
                 <div key={label} className="flex items-center justify-between">
                   <span className="text-xs" style={{ color: "#475569" }}>{label}</span>
@@ -1906,7 +1919,7 @@ function URLOverviewSection({ score, cardCount, setSection }: { score: number; c
 function URLDomainSection() {
   return (
     <div className="space-y-4 tl-fade-enter">
-      <SectionHeader icon={Globe} label="Domain Intelligence" badge={{ text: "High Risk", color: "#ef4444" }} />
+      <SectionHeader icon={Globe} label="Domain Intelligence" badge={{ text: UD.riskLevel, color: UD.threatScore >= 70 ? "#ef4444" : UD.threatScore >= 40 ? "#f59e0b" : "#10b981" }} />
       <div className="tl-glass p-5">
         <div className="text-xs font-bold mb-4" style={{ color: "#334155", letterSpacing: "1.5px", fontFamily: "'JetBrains Mono', monospace" }}>WHOIS & REGISTRATION</div>
         <div className="space-y-0">
@@ -1930,7 +1943,7 @@ function URLDomainSection() {
 function URLSSLSection() {
   return (
     <div className="space-y-4 tl-fade-enter">
-      <SectionHeader icon={Lock} label="SSL / TLS Check" badge={{ text: "Valid — but misleading", color: "#f59e0b" }} />
+      <SectionHeader icon={Lock} label="SSL / TLS Check" badge={{ text: UD.threatScore >= 40 ? "Review SSL Context" : "SSL OK", color: UD.threatScore >= 40 ? "#f59e0b" : "#10b981" }} />
       <div className="tl-glass p-5">
         <div className="flex items-center gap-4 mb-6 p-4 rounded-xl" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)" }}>
           <Info size={18} style={{ color: "#f59e0b", flexShrink: 0 }} />
@@ -2031,6 +2044,202 @@ function URLFindingsSection() {
   );
 }
 
+
+const API_URL = "http://127.0.0.1:8000";
+
+function clampScore(n: number) {
+  return Math.max(0, Math.min(100, Math.round(Number(n) || 0)));
+}
+
+function statusFromScore(score: number): CardStatus {
+  if (score >= 75) return "pass";
+  if (score >= 45) return "warn";
+  return "fail";
+}
+
+function gradeFromScore(score: number) {
+  if (score >= 90) return "A+";
+  if (score >= 80) return "A";
+  if (score >= 65) return "B";
+  if (score >= 45) return "C";
+  return "F";
+}
+
+function mapWebsite(api: any) {
+  const riskScore = clampScore(api?.summary?.score ?? 0);
+  const securityScore = clampScore(100 - riskScore);
+  const headers = api?.security_headers ?? {};
+  const dnsRecords = api?.dns?.records ?? {};
+  const cookieList = api?.cookies ?? [];
+  const techList = api?.technologies ?? [];
+  const findings = api?.summary?.findings ?? [];
+  const sslValid = Boolean(api?.ssl?.certificate_valid);
+  const hstsPresent = Boolean(headers?.["Strict-Transport-Security"]?.present);
+  const headerPresentCount = Object.values(headers).filter((h: any) => h?.present).length;
+  const weakCookies = cookieList.filter((c: any) => c?.security_rating === "Weak" || !c?.secure || !c?.httponly || !c?.samesite).length;
+  const dnsCount = Object.values(dnsRecords).reduce((sum: number, arr: any) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
+
+  Object.assign(D, {
+    score: securityScore,
+    grade: gradeFromScore(securityScore),
+    risk: api?.summary?.risk_level ?? "Unknown",
+    confidence: "Live Backend Data",
+
+    ssl: {
+      ...D.ssl,
+      grade: sslValid ? "A+" : "F",
+      valid: sslValid,
+      issuer: api?.ssl?.issuer ?? "Unknown",
+      subject: api?.website?.domain ?? "Unknown",
+      serial: "Not available",
+      expires: api?.ssl?.valid_until ?? "Unknown",
+      daysLeft: Math.max(0, Number(api?.ssl?.days_remaining ?? 0)),
+      protocol: api?.website?.https_enabled ? "HTTPS enabled" : "Not HTTPS",
+      cipher: "Not available",
+      bits: 0,
+      transparency: false,
+      ocsp: "Not available",
+      hsts: hstsPresent,
+    },
+
+    dns: Object.entries(dnsRecords).flatMap(([type, values]: any) =>
+      Array.isArray(values) ? values.map((value: string) => ({ type, value, ttl: "-" })) : []
+    ),
+
+    headers: Object.entries(headers).map(([name, h]: any) => ({
+      name,
+      present: Boolean(h?.present),
+      value: h?.value ?? null,
+    })),
+
+    cookies: cookieList.map((c: any) => ({
+      name: c?.name ?? "Unknown",
+      secure: Boolean(c?.secure),
+      httpOnly: Boolean(c?.httponly),
+      sameSite: c?.samesite ?? null,
+      path: "/",
+    })),
+
+    technologies: techList.length
+      ? techList.map((t: any) => ({ name: t?.name ?? "Unknown", category: t?.category ?? "Detected", risk: "low" }))
+      : [{ name: api?.website?.server ?? "Not disclosed", category: "Server", risk: "low" }],
+
+    findings: findings.length
+      ? findings.map((f: string) => ({ severity: "warning" as Severity, title: f, desc: "Detected by the ThreatLens backend risk engine." }))
+      : [{ severity: "passed" as Severity, title: "No major issues detected", desc: "ThreatLens did not detect major website security issues." }],
+
+    donut: [
+      { name: "Passed", value: Math.max(1, 8 - findings.length), color: "#10b981" },
+      { name: "Warnings", value: findings.length, color: "#f59e0b" },
+      { name: "Info", value: 1, color: "#3b82f6" },
+    ],
+
+    modules: [
+      { id: "ssl" as Section, label: "SSL Certificate", Icon: Lock, status: sslValid ? "pass" as CardStatus : "fail" as CardStatus, metric: sslValid ? `${D.ssl.daysLeft} days left` : "Invalid / unavailable", score: sslValid ? 95 : 20 },
+      { id: "dns" as Section, label: "DNS Security", Icon: Globe, status: api?.dns?.dmarc_found ? "pass" as CardStatus : "warn" as CardStatus, metric: `${dnsCount} records`, score: api?.dns?.dmarc_found ? 85 : 60 },
+      { id: "headers" as Section, label: "Security Headers", Icon: Shield, status: headerPresentCount >= 3 ? "pass" as CardStatus : "warn" as CardStatus, metric: `${headerPresentCount} / ${Object.keys(headers).length} present`, score: Object.keys(headers).length ? Math.round((headerPresentCount / Object.keys(headers).length) * 100) : 0 },
+      { id: "cookies" as Section, label: "Cookie Security", Icon: Database, status: weakCookies ? "warn" as CardStatus : "pass" as CardStatus, metric: `${cookieList.length} cookies · ${weakCookies} issue${weakCookies === 1 ? "" : "s"}`, score: weakCookies ? 65 : 95 },
+      { id: "tech" as Section, label: "Technology Stack", Icon: Code, status: "info" as CardStatus, metric: `${techList.length} detected`, score: 80 },
+      { id: "findings" as Section, label: "HTTP Methods", Icon: Server, status: api?.http_methods?.risky_methods?.length ? "warn" as CardStatus : "pass" as CardStatus, metric: api?.http_methods?.allowed_methods?.length ? api.http_methods.allowed_methods.join(" · ") : "No risky methods", score: api?.http_methods?.risky_methods?.length ? 60 : 90 },
+      { id: "findings" as Section, label: "robots.txt", Icon: FileText, status: api?.robots_txt?.found ? "pass" as CardStatus : "info" as CardStatus, metric: api?.robots_txt?.found ? "Present" : "Not found", score: api?.robots_txt?.found ? 100 : 70 },
+      { id: "findings" as Section, label: "security.txt", Icon: Eye, status: api?.security_txt?.found ? "pass" as CardStatus : "info" as CardStatus, metric: api?.security_txt?.found ? "Present" : "Not found", score: api?.security_txt?.found ? 100 : 50 },
+    ],
+  });
+}
+
+function mapPassword(api: any) {
+  const score = clampScore(api?.score ?? api?.strength_score ?? api?.password_score ?? 0);
+  const suggestions = api?.suggestions ?? api?.feedback ?? api?.findings ?? [];
+  const entropy = Number(api?.entropy ?? api?.entropy_bits ?? 0);
+  const strength = api?.strength ?? api?.strength_label ?? api?.risk_level ?? (score >= 80 ? "Strong" : score >= 50 ? "Moderate" : "Weak");
+
+  Object.assign(PD, {
+    score,
+    grade: gradeFromScore(score),
+    strength,
+    entropy,
+    crackTime: api?.crack_time ?? api?.estimated_crack_time ?? "Unknown",
+    charTypes: api?.character_types ?? api?.char_types ?? PD.charTypes,
+
+    radar: [
+      { subject: "Entropy", value: clampScore(entropy || score) },
+      { subject: "Length", value: clampScore(api?.length_score ?? score) },
+      { subject: "Complexity", value: clampScore(api?.complexity_score ?? score) },
+      { subject: "Uniqueness", value: clampScore(api?.uniqueness_score ?? score) },
+      { subject: "Dict. Resist.", value: clampScore(api?.dictionary_score ?? score) },
+    ],
+
+    donut: [
+      { name: "Strong Features", value: score >= 70 ? 4 : 2, color: "#10b981" },
+      { name: "Weaknesses", value: score < 70 ? 4 : 1, color: "#f59e0b" },
+      { name: "Recommendations", value: Math.max(1, suggestions.length), color: "#3b82f6" },
+    ],
+
+    modules: PD.modules.map((m) => ({ ...m, status: statusFromScore(score), score, metric: m.label === "Entropy" ? `${entropy || 0} bits` : m.label === "Crack Time" ? (api?.crack_time ?? api?.estimated_crack_time ?? "Unknown") : m.metric })),
+
+    findings: suggestions.length
+      ? suggestions.map((f: string) => ({ severity: score >= 70 ? "info" as Severity : "warning" as Severity, title: f, desc: "Generated by the ThreatLens password analyzer." }))
+      : [{ severity: "passed" as Severity, title: "No major password issues detected", desc: "ThreatLens did not detect major weaknesses in this password." }],
+  });
+}
+
+function mapUrl(api: any) {
+  const threatScore = clampScore(api?.score ?? api?.threat_score ?? api?.risk_score ?? 0);
+  const safetyScore = clampScore(100 - threatScore);
+  const riskLevel = api?.risk_level ?? (threatScore >= 70 ? "High Risk" : threatScore >= 40 ? "Moderate Risk" : "Low Risk");
+  const keywords = api?.suspicious_keywords ?? api?.keywords ?? [];
+  const redirects = api?.redirects ?? api?.redirect_chain ?? [];
+  const findings = api?.findings ?? api?.warnings ?? api?.reasons ?? [];
+
+  Object.assign(UD, {
+    score: safetyScore,
+    threatScore,
+    grade: gradeFromScore(safetyScore),
+    riskLevel,
+    keywords,
+    redirects: redirects.map((r: any, i: number) => ({ hop: r?.hop ?? i + 1, url: r?.url ?? r?.location ?? String(r), code: r?.code ?? r?.status_code ?? "-" })),
+    domain: {
+      age: api?.domain_age ?? "Unknown",
+      registrar: api?.registrar ?? "Unknown",
+      whois: api?.whois_privacy ?? "Unknown",
+      ip: api?.ip_address ?? "Unknown",
+      country: api?.country ?? "Unknown",
+      asn: api?.asn ?? "Unknown",
+      tld: api?.tld ?? "Unknown",
+    },
+    radar: [
+      { subject: "Domain Trust", value: safetyScore },
+      { subject: "SSL", value: threatScore >= 40 ? 60 : 90 },
+      { subject: "URL Structure", value: keywords.length ? 45 : 90 },
+      { subject: "Content Safety", value: safetyScore },
+      { subject: "Redirect Safety", value: redirects.length ? 45 : 90 },
+      { subject: "Reputation", value: safetyScore },
+    ],
+    donut: [
+      { name: "Safe Indicators", value: threatScore <= 30 ? 3 : 1, color: "#10b981" },
+      { name: "Suspicious", value: threatScore > 30 && threatScore < 70 ? 3 : keywords.length || redirects.length ? 1 : 0, color: "#f59e0b" },
+      { name: "Dangerous", value: threatScore >= 70 ? 3 : 0, color: "#ef4444" },
+    ],
+    modules: [
+      { label: "Overall Threat", status: threatScore >= 70 ? "fail" as CardStatus : threatScore >= 40 ? "warn" as CardStatus : "pass" as CardStatus, metric: `${threatScore}% — ${riskLevel}`, score: safetyScore },
+      { label: "Risk Level", status: threatScore >= 70 ? "fail" as CardStatus : threatScore >= 40 ? "warn" as CardStatus : "pass" as CardStatus, metric: riskLevel, score: safetyScore },
+      { label: "SSL Certificate", status: threatScore >= 40 ? "warn" as CardStatus : "pass" as CardStatus, metric: threatScore >= 40 ? "Review context" : "No SSL issue flagged", score: threatScore >= 40 ? 60 : 90 },
+      { label: "Domain Age", status: api?.domain_age === "Unknown" ? "info" as CardStatus : "pass" as CardStatus, metric: api?.domain_age ?? "Unknown", score: api?.domain_age === "Unknown" ? 50 : 80 },
+      { label: "Redirect Count", status: redirects.length ? "warn" as CardStatus : "pass" as CardStatus, metric: `${redirects.length} redirects`, score: redirects.length ? 60 : 95 },
+      { label: "Suspicious Keywords", status: keywords.length ? "warn" as CardStatus : "pass" as CardStatus, metric: `${keywords.length} detected`, score: keywords.length ? 55 : 95 },
+      { label: "URL Length", status: threatScore >= 40 ? "warn" as CardStatus : "pass" as CardStatus, metric: "Checked", score: safetyScore },
+      { label: "IP Address", status: api?.ip_address && api.ip_address !== "Unknown" ? "info" as CardStatus : "warn" as CardStatus, metric: api?.ip_address ?? "Unknown", score: 75 },
+      { label: "Homograph Detection", status: "info" as CardStatus, metric: "Not detected", score: 80 },
+      { label: "WHOIS Privacy", status: api?.whois_privacy === "Unknown" ? "info" as CardStatus : "warn" as CardStatus, metric: api?.whois_privacy ?? "Unknown", score: 70 },
+      { label: "Registrar", status: api?.registrar === "Unknown" ? "info" as CardStatus : "pass" as CardStatus, metric: api?.registrar ?? "Unknown", score: 75 },
+      { label: "Final Verdict", status: threatScore >= 70 ? "fail" as CardStatus : threatScore >= 40 ? "warn" as CardStatus : "pass" as CardStatus, metric: threatScore >= 70 ? "⚠ Do Not Visit" : threatScore >= 40 ? "Review Carefully" : "Looks Safe", score: safetyScore },
+    ],
+    findings: findings.length
+      ? findings.map((f: string) => ({ severity: threatScore >= 40 ? "warning" as Severity : "info" as Severity, title: f, desc: "Detected by the ThreatLens phishing URL analyzer." }))
+      : [{ severity: "passed" as Severity, title: "No major phishing indicators detected", desc: "ThreatLens did not detect strong phishing indicators for this URL." }],
+  });
+}
+
 /* ─── APP ────────────────────────────────────────────────────────────────── */
 export default function App() {
   const [tool,     setTool]     = useState<Tool>("website");
@@ -2040,10 +2249,30 @@ export default function App() {
 
   const currentSteps = tool === "website" ? SCAN_STEPS : tool === "password" ? PASSWORD_SCAN_STEPS : URL_SCAN_STEPS;
 
-  const handleAnalyze = (t: string) => {
+  const handleAnalyze = async (t: string) => {
     setTarget(t);
     setScanStep(-1);
     setPhase("scanning");
+
+    try {
+      const endpoint = tool === "website" ? "/scan-website" : tool === "password" ? "/check-password" : "/analyze-url";
+      const body = tool === "password" ? { password: t } : { url: t };
+
+      const response = await fetch(`${API_URL}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const data = await response.json();
+      console.log(`${tool} result:`, data);
+
+      if (tool === "website") mapWebsite(data);
+      if (tool === "password") mapPassword(data);
+      if (tool === "url") mapUrl(data);
+    } catch (error) {
+      console.error(`${tool} analysis failed:`, error);
+    }
   };
 
   useEffect(() => {
@@ -2060,7 +2289,7 @@ export default function App() {
       ids.push(setTimeout(() => setPhase("results"), 700));
     }, elapsed));
     return () => ids.forEach(clearTimeout);
-  }, [phase]);
+  }, [phase, tool]);
 
   return (
     <div className="dark" style={{ minHeight: "100vh" }}>
