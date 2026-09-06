@@ -128,7 +128,7 @@ ThreatLens/
 ## Clone Repository
 
 ```bash
-git clone https://github.com/srshwrkrthk/ThreatLensV1.git
+git clone https://github.com/srshwrkrthk/ThreatLensSuite.git
 
 cd ThreatLensV1
 ```
